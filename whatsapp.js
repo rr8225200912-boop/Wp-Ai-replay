@@ -14,7 +14,8 @@ const makeWASocket = typeof B.default === 'function' ? B.default : B.makeWASocke
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
 const AUTH_DIR = path.join(DATA_DIR, 'wa_auth');
 
-const conn = { status: 'starting', qr: null, number: null, pairCode: null };
+const conn = { status: 'starting', qr: null, number: null, pairCode: null, lastError: null };
+let retry = 0;
 let sock = null;
 let starting = false;
 let learnTimer = null;
@@ -196,6 +197,8 @@ async function start() {
         conn.status = 'connected';
         conn.qr = null;
         conn.pairCode = null;
+        conn.lastError = null;
+        retry = 0;
         conn.number = (sock.user?.id || '').split(':')[0].split('@')[0];
         if (!getSetting('owner_name') && sock.user?.name) setSetting('owner_name', sock.user.name);
         if (!Number(getSetting('owner_seen_ts'))) markOwnerActive();
@@ -203,16 +206,20 @@ async function start() {
       }
       if (connection === 'close') {
         const code = lastDisconnect?.error?.output?.statusCode;
+        const why = lastDisconnect?.error?.message || '';
         conn.status = 'disconnected';
         conn.number = null;
+        conn.qr = null;
+        conn.lastError = `কোড ${code || '?'} ${why}`.trim();
         if (code === DisconnectReason.loggedOut) {
-          log('warn', 'WhatsApp থেকে লগআউট হয়েছে। নতুন QR তৈরি হচ্ছে');
+          log('warn', 'WhatsApp থেকে লগআউট হয়েছে। নতুন করে লিঙ্ক করুন');
           fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         } else {
-          log('warn', `কানেকশন বন্ধ হয়েছে (কোড ${code || 'অজানা'}), আবার চেষ্টা হচ্ছে`);
+          log('warn', `কানেকশন বন্ধ হয়েছে (${conn.lastError})`);
         }
         starting = false;
-        setTimeout(start, 3000);
+        retry++;
+        setTimeout(start, Math.min(60000, 3000 * 2 ** Math.min(retry, 5)));
       }
     });
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -243,7 +250,7 @@ async function start() {
 async function requestPairing(number) {
   const n = String(number || '').replace(/\D/g, '');
   if (n.length < 8) throw new Error('দেশের কোডসহ পুরো নম্বর দিন, যেমন 8801XXXXXXXXX');
-  if (!sock || conn.status === 'starting') throw new Error('একটু অপেক্ষা করে আবার চাপুন');
+  if (!sock || conn.status !== 'qr') throw new Error('এখন WhatsApp সার্ভারের সাথে সংযোগ হচ্ছে না। কয়েক সেকেন্ড পর আবার চাপুন। বারবার হলে নিচের "শেষ সমস্যা" লেখাটা আমাকে পাঠান।');
   if (sock.authState?.creds?.registered) throw new Error('আগেই কানেক্টেড আছে');
   const code = await sock.requestPairingCode(n);
   conn.pairCode = String(code).replace(/(.{4})(.{4})/, '$1-$2');
