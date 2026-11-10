@@ -14,7 +14,7 @@ const makeWASocket = typeof B.default === 'function' ? B.default : B.makeWASocke
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = B;
 const AUTH_DIR = path.join(DATA_DIR, 'wa_auth');
 
-const conn = { status: 'starting', qr: null, number: null };
+const conn = { status: 'starting', qr: null, number: null, pairCode: null };
 let sock = null;
 let starting = false;
 let learnTimer = null;
@@ -195,6 +195,7 @@ async function start() {
       if (connection === 'open') {
         conn.status = 'connected';
         conn.qr = null;
+        conn.pairCode = null;
         conn.number = (sock.user?.id || '').split(':')[0].split('@')[0];
         if (!getSetting('owner_name') && sock.user?.name) setSetting('owner_name', sock.user.name);
         if (!Number(getSetting('owner_seen_ts'))) markOwnerActive();
@@ -239,6 +240,16 @@ async function start() {
   starting = false;
 }
 
+async function requestPairing(number) {
+  const n = String(number || '').replace(/\D/g, '');
+  if (n.length < 8) throw new Error('দেশের কোডসহ পুরো নম্বর দিন, যেমন 8801XXXXXXXXX');
+  if (!sock || conn.status === 'starting') throw new Error('একটু অপেক্ষা করে আবার চাপুন');
+  if (sock.authState?.creds?.registered) throw new Error('আগেই কানেক্টেড আছে');
+  const code = await sock.requestPairingCode(n);
+  conn.pairCode = String(code).replace(/(.{4})(.{4})/, '$1-$2');
+  return conn.pairCode;
+}
+
 async function reconnect() {
   try { sock?.end?.(undefined); } catch {}
   starting = false;
@@ -257,4 +268,4 @@ async function unlink() {
   setTimeout(start, 800);
 }
 
-module.exports = { start, reconnect, unlink, conn };
+module.exports = { start, reconnect, unlink, requestPairing, conn };

@@ -80,7 +80,7 @@ if (!PASSWORD) {
     res.redirect('/login');
   });
 
-  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+  app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
   // ---------- API ----------
   const { isAway } = require('./db');
@@ -106,6 +106,10 @@ if (!PASSWORD) {
     res.json({ ok: true });
   });
   app.post('/api/flags/:id/done', (req, res) => { db.prepare('UPDATE flags SET done = 1 WHERE id = ?').run(Number(req.params.id)); res.json({ ok: true }); });
+  app.post('/api/pair', async (req, res) => {
+    try { res.json({ code: await wa.requestPairing(req.body && req.body.number) }); }
+    catch (e) { res.status(400).json({ error: e.message }); }
+  });
   app.post('/api/reconnect', async (req, res) => { await wa.reconnect(); res.json({ ok: true }); });
   app.post('/api/unlink', async (req, res) => { await wa.unlink(); res.json({ ok: true }); });
 }

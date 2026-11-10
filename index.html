@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>আমার WhatsApp সহকারী</title>
+<style>
+:root{--bg:#e9efed;--ink:#14231f;--mute:#52665f;--line:#d3dedb;--on:#1f9d6b;--away:#d98e04;--bad:#b3261e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,"Noto Sans Bengali","Segoe UI",sans-serif;font-size:17px;line-height:1.5}
+main{max-width:560px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:6px 0 14px}
+.card{background:#fff;border-radius:14px;padding:14px;margin-bottom:12px;box-shadow:0 1px 6px rgba(20,35,31,.08)}
+.card h2{font-size:16px;margin:0 0 6px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.mute{color:var(--mute);font-size:14px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:#8a9a95}
+.dot.connected{background:var(--on)}.dot.qr{background:var(--away)}.dot.disconnected{background:var(--bad)}
+.sw{position:relative;width:60px;height:34px;flex:none}
+.sw input{opacity:0;width:100%;height:100%;position:absolute;margin:0;z-index:1}
+.sw span{position:absolute;inset:0;background:#b6c4bf;border-radius:99px;transition:.2s}
+.sw span:before{content:"";position:absolute;width:28px;height:28px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.sw input:checked+span{background:var(--on)}
+.sw input:checked+span:before{transform:translateX(26px)}
+.qr img{display:block;margin:10px auto;width:min(300px,100%)}
+.note{background:#fff6dd;border-radius:10px;padding:10px;font-size:15px;margin-top:8px}
+.bad{background:#fde8e6;color:var(--bad)}
+.item{padding:8px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.item .who{font-size:13px;color:var(--mute)}
+.item .txt{white-space:pre-wrap;word-break:break-word}
+button{border:0;border-radius:10px;padding:9px 13px;font-size:15px;background:#dbe5e1;color:var(--ink)}
+button.red{background:var(--bad);color:#fff}
+details{margin-top:6px}summary{color:var(--mute);font-size:14px;padding:6px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>আমার WhatsApp সহকারী</h1>
+  <div class="card" id="top"></div>
+  <div class="card" id="flags"></div>
+  <div class="card" id="replies"></div>
+  <details class="card"><summary>সমস্যা হলে</summary>
+    <div class="row" style="margin-top:8px">
+      <button id="re">আবার কানেক্ট</button>
+      <button class="red" id="un">নতুন QR নিন</button>
+      <button id="out">বের হন</button>
+    </div>
+  </details>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+function h(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v != null && v !== false) e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) { if (c == null) continue; e.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return e;
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  if (r.status === 401) { location = '/login'; return {}; }
+  return r.json();
+}
+const fmt = (ts) => new Date(ts).toLocaleString('bn-BD', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const STATUS = { connected: 'WhatsApp কানেক্টেড', qr: 'WhatsApp কানেক্ট করা হয়নি', disconnected: 'সংযোগ নেই, আবার চেষ্টা চলছে', starting: 'চালু হচ্ছে...' };
+
+let phoneVal = '';
+function render(s) {
+  if (document.activeElement && document.activeElement.id === 'ph') return;
+  const c = s.conn;
+  const sw = h('input', { type: 'checkbox', onchange: async (e) => { await api('/api/settings', { ai_enabled: e.target.checked }); load(); } });
+  sw.checked = s.ai_enabled;
+  $('#top').replaceChildren(
+    h('div', { class: 'row' }, h('div', {}, h('span', { class: 'dot ' + c.status }), STATUS[c.status] || c.status), null),
+    c.status === 'qr' ? h('div', { style: 'margin-top:10px' },
+      c.pairCode ? h('div', { class: 'note' }, 'আপনার কোড:', h('div', { style: 'font-size:30px;font-weight:700;letter-spacing:3px;margin:6px 0' }, c.pairCode),
+        'WhatsApp → সেটিংস → লিঙ্কড ডিভাইস → ডিভাইস লিঙ্ক করুন → নিচের "ফোন নম্বর দিয়ে লিঙ্ক করুন" চাপুন → এই কোড দিন।') : null,
+      h('div', { class: 'mute', style: 'margin:8px 0 4px' }, 'আপনার WhatsApp নম্বর (দেশের কোডসহ, যেমন 8801XXXXXXXXX):'),
+      h('input', { id: 'ph', type: 'tel', value: phoneVal, placeholder: '8801XXXXXXXXX', oninput: (e) => { phoneVal = e.target.value; }, style: 'width:100%;padding:12px;font-size:18px;border:1px solid #b9c9c3;border-radius:10px' }),
+      h('div', { style: 'margin-top:8px' }, h('button', { onclick: async (e) => {
+        e.target.textContent = 'অপেক্ষা করুন...';
+        const r = await api('/api/pair', { number: phoneVal });
+        e.target.textContent = 'কোড নিন';
+        if (r.error) alert(r.error); else load(true);
+      } }, 'কোড নিন'))) : null,
+    c.status === 'connected' ? h('div', { class: 'row', style: 'margin-top:12px' },
+      h('div', {}, 'সহকারী চালু', h('div', { class: 'mute' }, s.away ? 'এখন আপনাকে অফলাইন ধরা হচ্ছে, তাই সহকারী উত্তর দিচ্ছে' : 'আপনি সক্রিয়, তাই সহকারী চুপ আছে')),
+      h('label', { class: 'sw' }, sw, h('span'))) : null,
+    c.status === 'connected' ? h('div', { class: 'mute', style: 'margin-top:8px' },
+      s.learned ? 'আপনার কথার ধরন শেখা হয়ে গেছে।' : 'আপনার কথার ধরন শেখা হচ্ছে। পুরনো চ্যাট আসতে কিছুক্ষণ লাগে।') : null,
+    !s.hasKey ? h('div', { class: 'note bad' }, 'GEMINI_API_KEY দেওয়া হয়নি। Railway-এর Variables-এ যোগ করুন।') : null,
+    ...(s.problems || []).map((p) => h('div', { class: 'note bad' }, p.text))
+  );
+  $('#flags').replaceChildren(h('h2', {}, 'আপনার উত্তরের জন্য অপেক্ষায়'),
+    s.flags.length ? s.flags.map((f) => h('div', { class: 'item' },
+      h('div', { class: 'who' }, (f.name || f.jid.split('@')[0]) + ' · ' + fmt(f.ts)),
+      h('div', { class: 'txt' }, f.message),
+      h('div', { class: 'who' }, 'কেন: ' + f.reason),
+      h('button', { onclick: async () => { await api('/api/flags/' + f.id + '/done', {}); load(); } }, 'দেখেছি'))) :
+      h('div', { class: 'mute' }, 'এখন কিছু নেই। জরুরি বা ব্যক্তিগত মেসেজে সহকারী উত্তর না দিয়ে এখানে রেখে দেয়।'));
+  $('#replies').replaceChildren(h('h2', {}, 'সহকারী যা উত্তর দিয়েছে'),
+    s.replies.length ? s.replies.map((r) => h('div', { class: 'item' },
+      h('div', { class: 'who' }, (r.name || r.jid.split('@')[0]) + ' · ' + fmt(r.ts)), h('div', { class: 'txt' }, r.body))) :
+      h('div', { class: 'mute' }, 'এখনো কোনো উত্তর দেওয়া হয়নি।'));
+}
+async function load(force) { const s = await api('/api/state'); if (s && s.conn) { if (force && document.activeElement) document.activeElement.blur(); render(s); } }
+$('#re').onclick = async () => { await api('/api/reconnect', {}); load(); };
+$('#un').onclick = async () => { if (confirm('WhatsApp আনলিঙ্ক করে নতুন QR নেবেন?')) { await api('/api/unlink', {}); load(); } };
+$('#out').onclick = async () => { await api('/logout', {}); location = '/login'; };
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>
